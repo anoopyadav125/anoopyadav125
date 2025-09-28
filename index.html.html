@@ -1,0 +1,212 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>🌌 Global & Local Disaster Alert System</title>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      color: #fff;
+      text-align: center;
+      margin: 0;
+      padding: 20px;
+      min-height: 100vh;
+      background: url('https://upload.wikimedia.org/wikipedia/commons/c/c3/Solar_sys8.jpg') no-repeat center/cover;
+      background-attachment: fixed;
+    }
+    h2 { color: #ffeb3b; text-shadow: 1px 1px 4px black; }
+    .input-container { margin: 15px 0; display: flex; justify-content: center; gap: 10px; flex-wrap: wrap; }
+    input, button { padding: 10px; border-radius: 6px; border: none; font-size: 16px; }
+    input { flex: 1; min-width: 200px; max-width: 300px; }
+    button { cursor: pointer; background: #ff9800; color: #fff; font-weight: bold; }
+    .alerts-container { display: flex; justify-content: space-around; flex-wrap: wrap; margin-top: 20px; gap: 15px; }
+    .alert-box { flex: 1 1 45%; background: rgba(0,0,0,0.6); padding: 15px; border-radius: 10px; text-align: left; font-weight: bold; min-width: 280px; }
+    .alert-box h3 { color: #ffeb3b; margin-top: 0; text-shadow: 1px 1px 4px black; }
+    #localTime { margin-top: 10px; font-size: 16px; color: #fff; }
+    .weather-card { margin-top: 20px; background: rgba(0,0,0,0.6); padding: 20px; border-radius: 12px; max-width: 350px; margin-left: auto; margin-right: auto; }
+    .weather-card h1 { font-size: 42px; margin: 0; color: #ffeb3b; text-shadow: 2px 2px 5px black; }
+    .weather-card p { margin: 5px 0; }
+    .weather-details { margin-top: 15px; font-weight: bold; font-size: 18px; line-height: 1.6; text-align: left; }
+    @media (max-width: 768px) {
+      body { padding: 10px; }
+      h2 { font-size: 20px; }
+      .alert-box { flex: 1 1 100%; }
+      .weather-card { max-width: 100%; }
+    }
+  </style>
+</head>
+<body>
+  <h2>🌌 Global & Local Disaster Alert System</h2>
+
+  <div class="input-container">
+    <input type="text" id="cityInput" placeholder="Enter your city" />
+    <button onclick="updateCity()">Update City</button>
+  </div>
+
+  <div class="alerts-container">
+    <div class="alert-box" id="globalAlert">
+      <h3>🌍 Global Earthquake Alerts</h3>
+      <div id="eqResult">Waiting for global earthquake data...</div>
+    </div>
+    <div class="alert-box" id="localAlert">
+      <h3>🏠 Local Weather Alerts</h3>
+      <div id="weatherResult">Waiting for local weather data...</div>
+      <div id="localTime">Local Time: --:--:--</div>
+    </div>
+  </div>
+
+  <div class="weather-card">
+    <h1 id="tempDisplay">-- °C</h1>
+    <p id="realFeel">RealFeel® -- °C</p>
+    <div class="weather-details">
+      <p id="condition">Condition: --</p>
+      <p id="wind">Wind: -- km/h</p>
+      <p id="gusts">Wind Gusts: -- km/h</p>
+      <p id="air">Air Quality: --</p>
+    </div>
+  </div>
+
+  <script>
+    const API_KEY = "8751c185c3438c6609e7cd2e7af301db";
+    let CITY = "Gorakhpur";
+    let cityTimezoneOffset = 0;
+    let cityLat = 0;
+    let cityLon = 0;
+
+    // 🌍 Distance calculator (Haversine formula)
+    function getDistance(lat1, lon1, lat2, lon2) {
+      const R = 6371;
+      const dLat = (lat2 - lat1) * Math.PI / 180;
+      const dLon = (lon2 - lon1) * Math.PI / 180;
+      const a = Math.sin(dLat/2) * Math.sin(dLat/2) +
+                Math.cos(lat1 * Math.PI/180) * Math.cos(lat2 * Math.PI/180) *
+                Math.sin(dLon/2) * Math.sin(dLon/2);
+      const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+      return R * c;
+    }
+
+    // 🌍 Global Earthquake Alerts
+    async function checkGlobalEarthquake() {
+      try {
+        const response = await fetch('https://earthquake.usgs.gov/earthquakes/feed/v1.0/summary/all_hour.geojson');
+        const data = await response.json();
+
+        const quakes = data.features.filter(eq => eq.properties.mag >= 4.5);
+
+        if (quakes.length > 0) {
+          let quakeList = quakes.map(eq => {
+            let [lon, lat] = eq.geometry.coordinates;
+            let time = new Date(eq.properties.time).toLocaleTimeString();
+            return `🌋 M${eq.properties.mag} at ${eq.properties.place} (⏰ ${time})`;
+          }).join("<br>");
+          document.getElementById("eqResult").innerHTML = quakeList;
+        } else {
+          document.getElementById("eqResult").innerHTML = "✅ No significant earthquakes in the last hour.";
+        }
+
+        // 🏠 Nearby Earthquake Check (500 km)
+        if (cityLat && cityLon) {
+          let nearby = quakes.filter(eq => {
+            let [lon, lat] = eq.geometry.coordinates;
+            let dist = getDistance(cityLat, cityLon, lat, lon);
+            return dist <= 500;
+          });
+
+          if (nearby.length > 0) {
+            let msg = `⚠️ Nearby Earthquake Detected within 500 km of ${CITY}!`;
+            alert(msg);
+            showNotification(msg);
+          }
+        }
+
+      } catch (err) {
+        document.getElementById("eqResult").innerHTML = "⚠️ Error fetching earthquake data.";
+        console.warn(err);
+      }
+    }
+
+    // 🏠 Local Weather Alerts
+    async function checkLocalWeather() {
+      try {
+        let url = `https://api.openweathermap.org/data/2.5/weather?q=${CITY}&appid=${API_KEY}&units=metric`;
+        let response = await fetch(url);
+        let data = await response.json();
+
+        if (data.cod !== 200) {
+          document.getElementById("weatherResult").innerHTML = `⚠️ ${data.message}`;
+          return;
+        }
+
+        cityTimezoneOffset = data.timezone;
+        cityLat = data.coord.lat;
+        cityLon = data.coord.lon;
+
+        let temp = data.main.temp;
+        let weather = data.weather[0].main.toLowerCase();
+        let alertMsg = "";
+
+        if (temp > 40) alertMsg += `🔥 Heatwave Alert! Temperature: ${temp}°C<br>`;
+        if (weather.includes("rain") || weather.includes("storm")) alertMsg += `🌧️ Storm Alert!<br>`;
+        if (alertMsg === "") alertMsg = "✅ Safe Morning: No local disaster risk today.";
+
+        document.getElementById("weatherResult").innerHTML = alertMsg;
+
+        document.getElementById("tempDisplay").innerText = `${data.main.temp.toFixed(1)}°C`;
+        document.getElementById("realFeel").innerText = `RealFeel® ${(data.main.feels_like).toFixed(1)}°C`;
+        document.getElementById("condition").innerText = `Condition: ${data.weather[0].main}`;
+        document.getElementById("wind").innerText = `Wind: ${data.wind.speed} km/h`;
+        document.getElementById("gusts").innerText = `Wind Gusts: ${data.wind.gust || data.wind.speed} km/h`;
+        document.getElementById("air").innerText = `Air Quality: Moderate`;
+
+        updateLocalTime();
+      } catch (err) {
+        document.getElementById("weatherResult").innerHTML = "⚠️ Error fetching local weather.";
+        console.warn(err);
+      }
+    }
+
+    // 🕒 Local Time
+    function updateLocalTime() {
+      const now = new Date();
+      const utc = now.getTime() + (now.getTimezoneOffset() * 60000);
+      const cityTime = new Date(utc + cityTimezoneOffset * 1000);
+      const h = String(cityTime.getHours()).padStart(2, '0');
+      const m = String(cityTime.getMinutes()).padStart(2, '0');
+      const s = String(cityTime.getSeconds()).padStart(2, '0');
+      document.getElementById("localTime").innerHTML = `Local Time in ${CITY}: ${h}:${m}:${s}`;
+    }
+
+    // 📌 City update
+    function updateCity() {
+      const inputCity = document.getElementById("cityInput").value.trim();
+      if (inputCity) {
+        CITY = inputCity;
+        checkLocalWeather();
+      }
+    }
+
+    // 🔔 Desktop Notifications
+    if ("Notification" in window && Notification.permission !== "granted") {
+      Notification.requestPermission();
+    }
+    function showNotification(msg) {
+      if ("Notification" in window && Notification.permission === "granted") {
+        new Notification("🌋 Earthquake Alert", { body: msg });
+      }
+    }
+
+    // Auto Refresh
+    function autoRefresh() {
+      checkGlobalEarthquake();
+      checkLocalWeather();
+    }
+
+    window.onload = () => {
+      autoRefresh();
+      setInterval(autoRefresh, 300000);
+      setInterval(updateLocalTime, 1000);
+    }
+  </script>
+</body>
+</html>
